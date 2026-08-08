@@ -23,8 +23,11 @@ export class EventsController {
   }
 
   @Get()
-  findAll() {
-    return this.eventsService.findAll();
+  findAll(
+    @Query('category') category?: string,
+    @Query('searchQuery') searchQuery?: string,
+  ) {
+    return this.eventsService.findAll({ category, searchQuery });
   }
 
   // IMPORTANT: 'nearby' must come BEFORE ':id', otherwise NestJS
