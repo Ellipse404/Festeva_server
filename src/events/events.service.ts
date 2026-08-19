@@ -10,6 +10,7 @@ import { UpdateEventDto } from './dto/update-event.dto';
 import { FindEventsQueryDto } from './dto/find-events-query.dto';
 import { Event } from './entities/event.entity';
 import { SpatialQueryUtil } from './utils/spatial-query.util';
+import { MESSAGES, IMAGES } from '../constants';
 
 @Injectable()
 export class EventsService {
@@ -28,9 +29,7 @@ export class EventsService {
       title: event.title,
       category: event.type || 'others',
       description: event.description || '',
-      posterUrl:
-        event.posterUrl ||
-        'https://images.unsplash.com/photo-1540575467063-178a50c2df87?auto=format&fit=crop&w=1000&q=80',
+      posterUrl: event.posterUrl || IMAGES.POSTERS.DEFAULT_EVENT,
       date: formattedDate,
       time: event.time || '18:00',
       locationName: event.locationAddress || 'Event Location',
@@ -41,9 +40,7 @@ export class EventsService {
       availableSeats: event.availableSeats ?? 100,
       totalSeats: event.totalSeats ?? 100,
       hostName: event.hostName || 'Festeva Host',
-      hostAvatar:
-        event.hostAvatar ||
-        'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80',
+      hostAvatar: event.hostAvatar || IMAGES.AVATARS.DEFAULT_USER,
       hostEmail: event.hostEmail || '',
       createdAt: event.createdAt
         ? new Date(event.createdAt).toISOString().split('T')[0]
@@ -75,13 +72,9 @@ export class EventsService {
         totalSeats: createEventDto.totalSeats ?? 100,
         availableSeats:
           createEventDto.availableSeats ?? createEventDto.totalSeats ?? 100,
-        posterUrl:
-          createEventDto.posterUrl ||
-          'https://images.unsplash.com/photo-1540575467063-178a50c2df87?auto=format&fit=crop&w=1000&q=80',
+        posterUrl: createEventDto.posterUrl || IMAGES.POSTERS.DEFAULT_EVENT,
         hostName: createEventDto.hostName || 'Festeva Host',
-        hostAvatar:
-          createEventDto.hostAvatar ||
-          'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80',
+        hostAvatar: createEventDto.hostAvatar || IMAGES.AVATARS.DEFAULT_USER,
         hostEmail: createEventDto.hostEmail || '',
       });
 
@@ -191,7 +184,7 @@ export class EventsService {
   async findOne(id: string) {
     const event = await this.eventRepository.findOneBy({ id });
     if (!event) {
-      throw new NotFoundException(`Event with ID "${id}" not found`);
+      throw new NotFoundException(MESSAGES.EVENTS.NOT_FOUND(id));
     }
     return this.mapToUiEvent(event);
   }
@@ -199,7 +192,7 @@ export class EventsService {
   async update(id: string, updateEventDto: UpdateEventDto) {
     const event = await this.eventRepository.findOneBy({ id });
     if (!event) {
-      throw new NotFoundException(`Event with ID "${id}" not found`);
+      throw new NotFoundException(MESSAGES.EVENTS.NOT_FOUND(id));
     }
     Object.assign(event, updateEventDto);
     const updated = await this.eventRepository.save(event);
@@ -209,7 +202,7 @@ export class EventsService {
   async remove(id: string) {
     const event = await this.eventRepository.findOneBy({ id });
     if (!event) {
-      throw new NotFoundException(`Event with ID "${id}" not found`);
+      throw new NotFoundException(MESSAGES.EVENTS.NOT_FOUND(id));
     }
     await this.eventRepository.remove(event);
     return { success: true, message: `Event #${id} deleted successfully` };

@@ -6,10 +6,11 @@ import {
   Min,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+import { MESSAGES } from '../../constants';
 
 export class CreateEventDto {
   @IsString()
-  @IsNotEmpty()
+  @IsNotEmpty({ message: MESSAGES.VALIDATION.TITLE_REQUIRED })
   title!: string;
 
   @IsString()
@@ -25,7 +26,7 @@ export class CreateEventDto {
   type?: string;
 
   @IsString()
-  @IsNotEmpty()
+  @IsNotEmpty({ message: MESSAGES.VALIDATION.DATE_REQUIRED })
   date!: string; // YYYY-MM-DD or ISO string
 
   @IsString()
@@ -33,7 +34,7 @@ export class CreateEventDto {
   time?: string;
 
   @IsString()
-  @IsNotEmpty()
+  @IsNotEmpty({ message: MESSAGES.VALIDATION.LOCATION_NAME_REQUIRED })
   locationName!: string;
 
   @IsString()
@@ -52,13 +53,13 @@ export class CreateEventDto {
 
   @IsOptional()
   @IsNumber()
-  @Min(0)
+  @Min(0, { message: MESSAGES.VALIDATION.TICKET_PRICE_INVALID })
   @Type(() => Number)
   ticketPrice?: number;
 
   @IsOptional()
   @IsNumber()
-  @Min(1)
+  @Min(1, { message: MESSAGES.VALIDATION.TOTAL_CAPACITY_INVALID })
   @Type(() => Number)
   totalSeats?: number;
 
