@@ -46,6 +46,11 @@ lerna-debug.log*
 .temp
 .tmp
 
+# Tesseract OCR Data & Cache
+*.traineddata
+*.traineddata.gz
+.tesseract_cache
+
 # Runtime data
 pids
 *.pid
