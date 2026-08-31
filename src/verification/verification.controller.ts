@@ -8,11 +8,46 @@ import {
 } from '@nestjs/common';
 import { VerificationService } from './verification.service';
 import { VerifyIdentityDto } from './dto/verify-identity.dto';
+import { SendOtpDto } from './dto/send-otp.dto';
+import { VerifyOtpDto } from './dto/verify-otp.dto';
 import * as jwt from 'jsonwebtoken';
 
 @Controller('verification')
 export class VerificationController {
   constructor(private readonly verificationService: VerificationService) {}
+
+  @Post('send-otp')
+  @HttpCode(HttpStatus.OK)
+  async sendOtp(@Body() dto: SendOtpDto) {
+    return this.verificationService.sendPhoneOtp(dto.phoneNumber);
+  }
+
+  @Post('verify-otp')
+  @HttpCode(HttpStatus.OK)
+  async verifyOtp(@Request() req: any, @Body() dto: VerifyOtpDto) {
+    let targetUserId = dto.userId;
+    let targetUserEmail = dto.userEmail;
+
+    // Extract user ID/Email from Bearer Authorization header if available
+    const authHeader = req.headers?.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.split(' ')[1];
+      try {
+        const decoded: any = jwt.decode(token);
+        if (decoded?.sub) targetUserId = decoded.sub;
+        if (decoded?.email) targetUserEmail = decoded.email;
+      } catch (e) {
+        // ignore decode error
+      }
+    }
+
+    return this.verificationService.verifyPhoneOtp(
+      dto.phoneNumber,
+      dto.otp,
+      targetUserId,
+      targetUserEmail,
+    );
+  }
 
   @Post('verify-identity')
   @HttpCode(HttpStatus.OK)

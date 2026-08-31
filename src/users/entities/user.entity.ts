@@ -39,6 +39,12 @@ export class User {
   @Column({ default: false })
   isVerified: boolean;
 
+  @Column({ default: false })
+  isPhoneVerified: boolean;
+
+  @Column({ nullable: true })
+  phoneNumber?: string;
+
   @Column({ nullable: true })
   aadhaarNumber?: string;
 

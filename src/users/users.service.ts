@@ -65,6 +65,23 @@ export class UsersService {
     return this.usersRepository.save(newUser);
   }
 
+  async markPhoneAsVerified(
+    userId: string | undefined,
+    userEmail: string | undefined,
+    phoneNumber: string,
+  ): Promise<User | null> {
+    let user = userId ? await this.findById(userId) : null;
+    if (!user && userEmail) {
+      user = await this.findByEmail(userEmail);
+    }
+    if (user) {
+      user.isPhoneVerified = true;
+      user.phoneNumber = phoneNumber;
+      return this.usersRepository.save(user);
+    }
+    return null;
+  }
+
   async markUserAsVerified(
     userId: string,
     aadhaarNumber: string,
@@ -76,6 +93,7 @@ export class UsersService {
     }
 
     user.isVerified = true;
+    user.isPhoneVerified = true;
     user.aadhaarNumber = aadhaarNumber;
     user.verificationDetails = verificationDetails || {};
 
