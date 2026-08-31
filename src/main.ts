@@ -1,9 +1,14 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
+import { json, urlencoded } from 'express';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
+  // Increase payload limit to 25mb for base64 image verification uploads
+  app.use(json({ limit: '25mb' }));
+  app.use(urlencoded({ limit: '25mb', extended: true }));
 
   // Explicit CORS middleware to guarantee headers on ALL responses & preflight OPTIONS
   app.use((req: any, res: any, next: any) => {

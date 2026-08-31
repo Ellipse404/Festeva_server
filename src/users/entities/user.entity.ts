@@ -36,6 +36,21 @@ export class User {
   @Column({ default: 'user' })
   role: string;
 
+  @Column({ default: false })
+  isVerified: boolean;
+
+  @Column({ default: false })
+  isPhoneVerified: boolean;
+
+  @Column({ nullable: true })
+  phoneNumber?: string;
+
+  @Column({ nullable: true })
+  aadhaarNumber?: string;
+
+  @Column({ type: 'jsonb', nullable: true })
+  verificationDetails?: Record<string, any>;
+
   @CreateDateColumn()
   createdAt: Date;
 
