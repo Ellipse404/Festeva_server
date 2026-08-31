@@ -15,7 +15,8 @@ interface OtpRecord {
 
 @Injectable()
 export class VerificationService {
-  private readonly otpStore = new Map<string, OtpRecord>();
+  private readonly phoneOtpStore = new Map<string, OtpRecord>();
+  private readonly emailOtpStore = new Map<string, OtpRecord>();
 
   constructor(private readonly usersService: UsersService) {}
 
@@ -88,7 +89,93 @@ export class VerificationService {
   }
 
   /**
-   * Send 6-digit OTP to mobile phone number without UI bypass hints
+   * Resend Email API Dispatcher with detailed logging & custom HTML template
+   */
+  private async sendEmailViaResend(
+    email: string,
+    otpCode: string,
+  ): Promise<{ sent: boolean; error?: string }> {
+    const rawApiKey = process.env.RESEND_API_KEY;
+    if (!rawApiKey || !rawApiKey.trim()) {
+      console.warn(
+        '⚠️ [Resend Notice] RESEND_API_KEY is not configured in server/.env',
+      );
+      return {
+        sent: false,
+        error: 'RESEND_API_KEY is missing in server/.env file',
+      };
+    }
+
+    const resendApiKey = rawApiKey.trim();
+    // Default fromEmail for Resend sandbox/testing is onboarding@resend.dev
+    const fromEmail = process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev';
+
+    try {
+      const htmlTemplate = `
+        <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; padding: 30px; background-color: #0f172a; border-radius: 20px; color: #f8fafc; border: 1px solid rgba(255,255,255,0.1);">
+          <div style="text-align: center; margin-bottom: 25px;">
+            <h1 style="background: linear-gradient(to right, #c084fc, #f472b6); -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-size: 32px; margin: 0; font-weight: 800;">Festeva</h1>
+            <p style="color: #94a3b8; font-size: 14px; margin-top: 5px;">Identity & Email Verification Gateway</p>
+          </div>
+          
+          <div style="background-color: rgba(30, 41, 59, 0.8); border: 1px solid rgba(255,255,255,0.1); border-radius: 16px; padding: 25px; text-align: center; margin-bottom: 25px;">
+            <p style="color: #cbd5e1; font-size: 15px; margin-top: 0;">Your 6-Digit Email Verification Security Code is:</p>
+            <div style="background: linear-gradient(135deg, #7c3aed, #db2777); font-size: 36px; font-weight: 900; letter-spacing: 10px; color: #ffffff; padding: 15px 25px; border-radius: 12px; display: inline-block; margin: 15px 0; text-shadow: 0 2px 4px rgba(0,0,0,0.3);">
+              ${otpCode}
+            </div>
+            <p style="color: #94a3b8; font-size: 13px; margin-bottom: 0;">This code is valid for <strong>5 minutes</strong>. Do not share this OTP code with anyone.</p>
+          </div>
+
+          <div style="text-align: center; color: #64748b; font-size: 12px; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 20px;">
+            <p style="margin: 0;">Festeva Event Discovery & Identity Verification System</p>
+          </div>
+        </div>
+      `;
+
+      const res = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${resendApiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          from: fromEmail,
+          to: [email],
+          subject: `${otpCode} is your Festeva Email Verification Code`,
+          html: htmlTemplate,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (res.ok && data?.id) {
+        console.log(
+          `✅ [Resend API] Email OTP successfully sent to ${email} (Message ID: ${data.id})`,
+        );
+        return { sent: true };
+      } else {
+        const errorMsg =
+          data?.message || data?.error?.message || JSON.stringify(data);
+        console.error(`❌ [Resend API Error ${res.status}]:`, errorMsg);
+
+        if (res.status === 403 && errorMsg.includes('testing emails')) {
+          console.warn(
+            '💡 Resend Free Account Note: On Resend testing mode, emails can only be sent to the email address registered with your Resend account (or add a domain at resend.com/domains).',
+          );
+        }
+        return { sent: false, error: errorMsg };
+      }
+    } catch (e: any) {
+      console.error('❌ Resend API dispatch exception:', e?.message || e);
+      return {
+        sent: false,
+        error: e?.message || 'Network error dispatching Resend request',
+      };
+    }
+  }
+
+  /**
+   * Send 6-digit OTP to mobile phone number
    */
   async sendPhoneOtp(phoneNumber: string) {
     const cleanPhone = phoneNumber.replace(/\D/g, '');
@@ -98,18 +185,14 @@ export class VerificationService {
       );
     }
 
-    // Generate random secure 6-digit OTP code
     const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
-    const expiresAt = Date.now() + 5 * 60 * 1000; // 5 minute validity
+    const expiresAt = Date.now() + 5 * 60 * 1000;
 
-    this.otpStore.set(cleanPhone, { otp: otpCode, expiresAt });
-
-    // Attempt real SMS Gateway delivery
+    this.phoneOtpStore.set(cleanPhone, { otp: otpCode, expiresAt });
     const smsSent = await this.sendSmsViaGateway(cleanPhone, otpCode);
 
-    // Fallback console logging for developer server terminal
     console.log(`\n=================================================`);
-    console.log(`📱 [SERVER OTP LOG] Mobile: +91 ${cleanPhone}`);
+    console.log(`📱 [SERVER PHONE OTP LOG] Mobile: +91 ${cleanPhone}`);
     console.log(`🔑 Real OTP Code: ${otpCode} (Expires in 5 minutes)`);
     console.log(`=================================================\n`);
 
@@ -123,7 +206,37 @@ export class VerificationService {
   }
 
   /**
-   * Strict verification of 6-digit OTP & PostgreSQL database update
+   * Send 6-digit OTP to user email via Resend
+   */
+  async sendEmailOtp(email: string) {
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      throw new BadRequestException('Please enter a valid email address');
+    }
+
+    const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = Date.now() + 5 * 60 * 1000;
+
+    this.emailOtpStore.set(cleanEmail, { otp: otpCode, expiresAt });
+    const result = await this.sendEmailViaResend(cleanEmail, otpCode);
+
+    console.log(`\n=================================================`);
+    console.log(`✉️ [SERVER EMAIL OTP LOG] Email: ${cleanEmail}`);
+    console.log(`🔑 Real OTP Code: ${otpCode} (Expires in 5 minutes)`);
+    console.log(`=================================================\n`);
+
+    return {
+      success: true,
+      sent: result.sent,
+      message: result.sent
+        ? `Verification OTP sent to ${cleanEmail}`
+        : `OTP generated for ${cleanEmail}. ${result.error ? `Notice: ${result.error}` : 'Check inbox or server log.'}`,
+      expiresInSec: 300,
+    };
+  }
+
+  /**
+   * Strict verification of 6-digit Phone OTP & PostgreSQL DB update
    */
   async verifyPhoneOtp(
     phoneNumber: string,
@@ -132,7 +245,7 @@ export class VerificationService {
     userEmail?: string,
   ) {
     const cleanPhone = phoneNumber.replace(/\D/g, '');
-    const record = this.otpStore.get(cleanPhone);
+    const record = this.phoneOtpStore.get(cleanPhone);
 
     if (!record) {
       throw new UnprocessableEntityException(
@@ -141,26 +254,22 @@ export class VerificationService {
     }
 
     if (Date.now() > record.expiresAt) {
-      this.otpStore.delete(cleanPhone);
+      this.phoneOtpStore.delete(cleanPhone);
       throw new UnprocessableEntityException(
         'OTP has expired. Please click "Send OTP" to request a new verification code.',
       );
     }
 
-    // Strict exact matching of OTP code
     if (record.otp !== otp.trim()) {
       throw new UnprocessableEntityException(
         'Invalid OTP code entered. Please check the 6-digit SMS code sent to your mobile phone.',
       );
     }
 
-    // Clear used OTP record upon successful verification
-    this.otpStore.delete(cleanPhone);
-
+    this.phoneOtpStore.delete(cleanPhone);
     const formattedPhone = `+91 ${cleanPhone}`;
 
-    // Update database user record so phone verification persists across page refreshes
-    await this.usersService.markPhoneAsVerified(
+    const updatedUser = await this.usersService.markPhoneAsVerified(
       userId,
       userEmail,
       formattedPhone,
@@ -169,8 +278,52 @@ export class VerificationService {
     return {
       success: true,
       isPhoneVerified: true,
+      isVerified: updatedUser?.isVerified || false,
       phoneNumber: formattedPhone,
       message: 'Mobile number verified successfully!',
+    };
+  }
+
+  /**
+   * Strict verification of 6-digit Email OTP & PostgreSQL DB update
+   */
+  async verifyEmailOtp(email: string, otp: string, userId?: string) {
+    const cleanEmail = email.trim().toLowerCase();
+    const record = this.emailOtpStore.get(cleanEmail);
+
+    if (!record) {
+      throw new UnprocessableEntityException(
+        'OTP not found or expired. Please click "Send Email OTP" to receive a new code in your inbox.',
+      );
+    }
+
+    if (Date.now() > record.expiresAt) {
+      this.emailOtpStore.delete(cleanEmail);
+      throw new UnprocessableEntityException(
+        'Email OTP has expired. Please request a new verification code.',
+      );
+    }
+
+    if (record.otp !== otp.trim()) {
+      throw new UnprocessableEntityException(
+        'Invalid OTP code entered. Please check the 6-digit code sent to your email inbox.',
+      );
+    }
+
+    this.emailOtpStore.delete(cleanEmail);
+
+    const updatedUser = await this.usersService.markEmailAsVerified(
+      userId,
+      cleanEmail,
+      cleanEmail,
+    );
+
+    return {
+      success: true,
+      isEmailVerified: true,
+      isVerified: updatedUser?.isVerified || false,
+      email: cleanEmail,
+      message: 'Email address verified successfully!',
     };
   }
 
@@ -181,7 +334,6 @@ export class VerificationService {
     userEmail?: string,
   ) {
     try {
-      // 1. Validate Base64 Payload presence
       const aadhaarBuffer = this.base64ToBuffer(aadhaarBase64);
       const selfieBuffer = this.base64ToBuffer(selfieBase64);
 
@@ -196,7 +348,6 @@ export class VerificationService {
         );
       }
 
-      // 2. Perform OCR via Tesseract.js to extract Aadhaar Number
       const ocrResult = await this.performOcr(aadhaarBuffer);
       let extractedAadhaar = this.extractAadhaarNumber(ocrResult.text);
 
@@ -207,10 +358,7 @@ export class VerificationService {
         extractedAadhaar = `${randPrefix} ${randMid} ${rand4}`;
       }
 
-      // 3. Aadhaar Secure QR Code Check
       const qrDetails = this.performQrCheck(aadhaarBuffer);
-
-      // 4. Face Match & Liveness Check
       const faceMatchResult = this.performFaceMatchAndLiveness(
         aadhaarBuffer,
         selfieBuffer,
@@ -231,7 +379,6 @@ export class VerificationService {
         livenessPassed: faceMatchResult.livenessPassed,
       };
 
-      // 5. Ensure valid database user record exists
       let user = userId ? await this.usersService.findById(userId) : null;
       if (!user && userEmail) {
         user = await this.usersService.findByEmail(userEmail);
@@ -246,7 +393,6 @@ export class VerificationService {
         });
       }
 
-      // Mark user as verified in database
       const updatedUser = await this.usersService.markUserAsVerified(
         user.id,
         extractedAadhaar,
