@@ -1,12 +1,11 @@
 import {
-  Injectable,
   BadRequestException,
+  Injectable,
   UnprocessableEntityException,
-  InternalServerErrorException,
 } from '@nestjs/common';
-import { UsersService } from '../users/users.service';
+import * as nodemailer from 'nodemailer';
 import { createWorker } from 'tesseract.js';
-import jsQR from 'jsqr';
+import { UsersService } from '../users/users.service';
 
 interface OtpRecord {
   otp: string;
@@ -89,28 +88,34 @@ export class VerificationService {
   }
 
   /**
-   * Resend Email API Dispatcher with detailed logging & custom HTML template
+   * Nodemailer SMTP Email Dispatcher (Sends from bn.4u7agex@gmail.com to dynamic user email)
    */
-  private async sendEmailViaResend(
-    email: string,
+  private async sendEmailViaNodemailer(
+    recipientEmail: string,
     otpCode: string,
   ): Promise<{ sent: boolean; error?: string }> {
-    const rawApiKey = process.env.RESEND_API_KEY;
-    if (!rawApiKey || !rawApiKey.trim()) {
+    const fromEmail = process.env.SMTP_USER || 'bn.4u7agex@gmail.com';
+    const smtpPass = process.env.SMTP_PASS;
+
+    if (!smtpPass || !smtpPass.trim()) {
       console.warn(
-        '⚠️ [Resend Notice] RESEND_API_KEY is not configured in server/.env',
+        `⚠️ [Nodemailer Notice] SMTP_PASS is missing in server/.env. Please generate a 16-character Google App Password for ${fromEmail} and save SMTP_PASS in server/.env`,
       );
       return {
         sent: false,
-        error: 'RESEND_API_KEY is missing in server/.env file',
+        error: `SMTP_PASS missing in server/.env. Add Google App Password for ${fromEmail}`,
       };
     }
 
-    const resendApiKey = rawApiKey.trim();
-    // Default fromEmail for Resend sandbox/testing is onboarding@resend.dev
-    const fromEmail = process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev';
-
     try {
+      const transporter = nodemailer.createTransport({
+        service: 'gmail',
+        auth: {
+          user: fromEmail,
+          pass: smtpPass.trim(),
+        },
+      });
+
       const htmlTemplate = `
         <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; padding: 30px; background-color: #0f172a; border-radius: 20px; color: #f8fafc; border: 1px solid rgba(255,255,255,0.1);">
           <div style="text-align: center; margin-bottom: 25px;">
@@ -132,44 +137,22 @@ export class VerificationService {
         </div>
       `;
 
-      const res = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${resendApiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          from: fromEmail,
-          to: [email],
-          subject: `${otpCode} is your Festeva Email Verification Code`,
-          html: htmlTemplate,
-        }),
+      const info = await transporter.sendMail({
+        from: `Festeva Verification <${fromEmail}>`,
+        to: recipientEmail,
+        subject: `${otpCode} is your Festeva Email Verification Code`,
+        html: htmlTemplate,
       });
 
-      const data = await res.json();
-
-      if (res.ok && data?.id) {
-        console.log(
-          `✅ [Resend API] Email OTP successfully sent to ${email} (Message ID: ${data.id})`,
-        );
-        return { sent: true };
-      } else {
-        const errorMsg =
-          data?.message || data?.error?.message || JSON.stringify(data);
-        console.error(`❌ [Resend API Error ${res.status}]:`, errorMsg);
-
-        if (res.status === 403 && errorMsg.includes('testing emails')) {
-          console.warn(
-            '💡 Resend Free Account Note: On Resend testing mode, emails can only be sent to the email address registered with your Resend account (or add a domain at resend.com/domains).',
-          );
-        }
-        return { sent: false, error: errorMsg };
-      }
+      console.log(
+        `✅ [Nodemailer] Email OTP sent from ${fromEmail} to ${recipientEmail} (Message ID: ${info.messageId})`,
+      );
+      return { sent: true };
     } catch (e: any) {
-      console.error('❌ Resend API dispatch exception:', e?.message || e);
+      console.error(`❌ [Nodemailer Error]:`, e?.message || e);
       return {
         sent: false,
-        error: e?.message || 'Network error dispatching Resend request',
+        error: e?.message || 'Failed to dispatch email via Nodemailer SMTP',
       };
     }
   }
@@ -206,7 +189,7 @@ export class VerificationService {
   }
 
   /**
-   * Send 6-digit OTP to user email via Resend
+   * Send 6-digit OTP to dynamic user email via Nodemailer (bn.4u7agex@gmail.com)
    */
   async sendEmailOtp(email: string) {
     const cleanEmail = email.trim().toLowerCase();
@@ -218,10 +201,10 @@ export class VerificationService {
     const expiresAt = Date.now() + 5 * 60 * 1000;
 
     this.emailOtpStore.set(cleanEmail, { otp: otpCode, expiresAt });
-    const result = await this.sendEmailViaResend(cleanEmail, otpCode);
+    const result = await this.sendEmailViaNodemailer(cleanEmail, otpCode);
 
     console.log(`\n=================================================`);
-    console.log(`✉️ [SERVER EMAIL OTP LOG] Email: ${cleanEmail}`);
+    console.log(`✉️ [SERVER EMAIL OTP LOG] To Email: ${cleanEmail}`);
     console.log(`🔑 Real OTP Code: ${otpCode} (Expires in 5 minutes)`);
     console.log(`=================================================\n`);
 
