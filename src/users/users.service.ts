@@ -30,9 +30,11 @@ export class UsersService {
   }
 
   async create(userData: Partial<User>): Promise<User> {
+    const isGoogle = userData.provider === 'google';
     const newUser = this.usersRepository.create({
       ...userData,
       email: userData.email?.trim().toLowerCase(),
+      isEmailVerified: isGoogle ? true : Boolean(userData.isEmailVerified),
     });
     return this.usersRepository.save(newUser);
   }
@@ -45,10 +47,18 @@ export class UsersService {
     providerId?: string;
   }): Promise<User> {
     const existing = await this.findByEmail(data.email);
+    const isGoogle = data.provider === 'google';
+
     if (existing) {
       existing.provider = data.provider;
       if (data.providerId) existing.providerId = data.providerId;
       if (data.avatar && !existing.avatar) existing.avatar = data.avatar;
+      if (isGoogle) {
+        existing.isEmailVerified = true;
+        if (existing.isPhoneVerified) {
+          existing.isVerified = true;
+        }
+      }
       return this.usersRepository.save(existing);
     }
 
@@ -60,6 +70,7 @@ export class UsersService {
         `https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=200&q=80`,
       provider: data.provider,
       providerId: data.providerId,
+      isEmailVerified: isGoogle,
     });
 
     return this.usersRepository.save(newUser);
@@ -77,6 +88,28 @@ export class UsersService {
     if (user) {
       user.isPhoneVerified = true;
       user.phoneNumber = phoneNumber;
+      if (user.isEmailVerified || user.provider === 'google') {
+        user.isVerified = true;
+      }
+      return this.usersRepository.save(user);
+    }
+    return null;
+  }
+
+  async markEmailAsVerified(
+    userId: string | undefined,
+    userEmail: string | undefined,
+    email: string,
+  ): Promise<User | null> {
+    let user = userId ? await this.findById(userId) : null;
+    if (!user && (userEmail || email)) {
+      user = await this.findByEmail(userEmail || email);
+    }
+    if (user) {
+      user.isEmailVerified = true;
+      if (user.isPhoneVerified) {
+        user.isVerified = true;
+      }
       return this.usersRepository.save(user);
     }
     return null;
@@ -94,6 +127,7 @@ export class UsersService {
 
     user.isVerified = true;
     user.isPhoneVerified = true;
+    user.isEmailVerified = true;
     user.aadhaarNumber = aadhaarNumber;
     user.verificationDetails = verificationDetails || {};
 

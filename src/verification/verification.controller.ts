@@ -10,6 +10,8 @@ import { VerificationService } from './verification.service';
 import { VerifyIdentityDto } from './dto/verify-identity.dto';
 import { SendOtpDto } from './dto/send-otp.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
+import { SendEmailOtpDto } from './dto/send-email-otp.dto';
+import { VerifyEmailOtpDto } from './dto/verify-email-otp.dto';
 import * as jwt from 'jsonwebtoken';
 
 @Controller('verification')
@@ -28,7 +30,6 @@ export class VerificationController {
     let targetUserId = dto.userId;
     let targetUserEmail = dto.userEmail;
 
-    // Extract user ID/Email from Bearer Authorization header if available
     const authHeader = req.headers?.authorization;
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const token = authHeader.split(' ')[1];
@@ -37,7 +38,7 @@ export class VerificationController {
         if (decoded?.sub) targetUserId = decoded.sub;
         if (decoded?.email) targetUserEmail = decoded.email;
       } catch (e) {
-        // ignore decode error
+        // ignore
       }
     }
 
@@ -49,13 +50,41 @@ export class VerificationController {
     );
   }
 
+  @Post('send-email-otp')
+  @HttpCode(HttpStatus.OK)
+  async sendEmailOtp(@Body() dto: SendEmailOtpDto) {
+    return this.verificationService.sendEmailOtp(dto.email);
+  }
+
+  @Post('verify-email-otp')
+  @HttpCode(HttpStatus.OK)
+  async verifyEmailOtp(@Request() req: any, @Body() dto: VerifyEmailOtpDto) {
+    let targetUserId = dto.userId;
+
+    const authHeader = req.headers?.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.split(' ')[1];
+      try {
+        const decoded: any = jwt.decode(token);
+        if (decoded?.sub) targetUserId = decoded.sub;
+      } catch (e) {
+        // ignore
+      }
+    }
+
+    return this.verificationService.verifyEmailOtp(
+      dto.email,
+      dto.otp,
+      targetUserId,
+    );
+  }
+
   @Post('verify-identity')
   @HttpCode(HttpStatus.OK)
   async verifyIdentity(@Request() req: any, @Body() dto: VerifyIdentityDto) {
     let targetUserId = dto.userId;
     let targetUserEmail = dto.userEmail;
 
-    // Optional manual JWT extraction from Authorization header without Passport 401 throw
     const authHeader = req.headers?.authorization;
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const token = authHeader.split(' ')[1];
@@ -64,7 +93,7 @@ export class VerificationController {
         if (decoded?.sub) targetUserId = decoded.sub;
         if (decoded?.email) targetUserEmail = decoded.email;
       } catch (e) {
-        // Silently ignore token decode error and rely on payload email/id
+        // Silently ignore token decode error
       }
     }
 
