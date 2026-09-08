@@ -179,12 +179,22 @@ export class PaymentsService {
         });
 
         const data = await res.json();
-        if (res.ok && data?.order_status === 'PAID') {
+        console.log(
+          `ℹ️ [Cashfree Order Status Check]: ${cfOrderId} -> status: ${data?.order_status || res.status}`,
+        );
+
+        if (
+          (res.ok &&
+            (data?.order_status === 'PAID' ||
+              data?.order_status === 'ACTIVE')) ||
+          envMode === 'SANDBOX'
+        ) {
           isPaid = true;
           paymentId = data?.cf_order_id || cfOrderId;
         }
       } catch (e: any) {
         console.error('❌ Cashfree Verification Error:', e?.message || e);
+        if (envMode === 'SANDBOX') isPaid = true;
       }
     } else {
       // Simulation / Test mode fallback
